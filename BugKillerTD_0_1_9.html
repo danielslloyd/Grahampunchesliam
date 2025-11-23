@@ -64,6 +64,12 @@
 
 	var fridgeRadius = 30;  // Renamed from wellRadius
 	var fridgeCost = 1000;  // Cost in XP
+	var fridgeMilkOz = 100;  // Starting milk in ounces
+	var milkPerEmoji = 10;  // 10 oz = 1 milk carton emoji
+
+	var portalRadius = 50;  // Radius of cloning portals
+	var portalSpawnRate = 600;  // Frames between portal spawns
+	var maxPortals = 3;  // Maximum number of portals on map
 
 	var elbowRoom = 0;
 	var minDistance = 50;
@@ -87,11 +93,13 @@
 	var liamsOn = false;
 	var punches = [];  // Actually veggies now!
 	var punchCount = 0;
-	var fridges = [];  // Renamed from wells
+	var fridges = [];  // Renamed from wells - but now we only have ONE in center
 	var grahams = [];  // Renamed from turrets
 	var grahamCount = 0;
 	var floatingTexts = [];  // For +100 XP animations
 	var killLog = [];  // Kill log messages
+	var portals = [];  // Cloning portals
+	var portalSpawnCounter = 0;  // Counter for portal spawning
 
 	var frameCounter = 0;
 	var timr = [0,0,0,0,0,0,0,0,0,0];
@@ -144,11 +152,6 @@
 		break;
 		case 71:  // G key for Graham placement
 			gPlace=!gPlace;
-			wPlace=false;
-		break;
-		case 87:  // W key for Well placement
-			wPlace=!wPlace;
-			gPlace=false;
 		break;
 		case 32:  // Spacebar to pause
 			paused=!paused;
@@ -204,11 +207,11 @@
 			if (gPlace) {
 				makeGraham(currentPos[0],currentPos[1],0,0,0,0);
 				xp-=cost;
+				// Auto-select the newly placed Graham
+				selectedGraham = grahams.length - 1;
+				gPlace = false;  // Exit placement mode
 			}
-			else if (wPlace) {
-				makeFridge(currentPos[0],currentPos[1]);
-				xp-=cost;
-			}
+			// No fridge placement - fridge is auto-created in center
 			isDragging=false;
 			clickDown=false;
 			startingPos = [];
@@ -329,9 +332,16 @@
 	}
 	
 	function makeFridge(x,y) {
-		fridges.push({x: x
-					, y: y
-					, health: fridgeHealth
+		// Only allow one fridge, always in center
+		if (fridges.length > 0) return;
+
+		// Place fridge in center of canvas
+		var centerX = canvas.width / 2;
+		var centerY = canvas.height / 2;
+
+		fridges.push({x: centerX
+					, y: centerY
+					, milkOz: fridgeMilkOz
 					, r:fridgeRadius
 					, status: 1
 					, output: 100});  // Fixed XP output
@@ -349,20 +359,22 @@
 		}
 	}
 
-	function makeLiam(liamX,liamY) {
+	function makeLiam(liamX,liamY,speedMultiplier) {
 		liamLiveCount++;
 		liamTotalCount++;
+		if (speedMultiplier === undefined) speedMultiplier = 1;
 		liams.push({x: liamX
 				, y: liamY
-				, dx: Math.random()*liamSpeed
-				, dy: Math.random()*liamSpeed
+				, dx: Math.random()*liamSpeed*speedMultiplier
+				, dy: Math.random()*liamSpeed*speedMultiplier
 				, dPushx: 0
 				, dPushy: 0
 				, status: 1
 				, shotAt: 0
 				, pStep: frameCounter%pathCalcStep
 				, closestFridge: 0
-				, closestFridgeDst: 0});
+				, closestFridgeDst: 0
+				, speedMultiplier: speedMultiplier});  // Track speed multiplier
 	}
 	
 	function makeGraham(grahamX,grahamY,railAX,railAY,railBX,railBY) {
@@ -439,8 +451,22 @@
 						&& punches[i].x < liams[j].x+2*liamRadius
 						&& punches[i].y+2*punchRadius > liams[j].y
 						&& punches[i].y < liams[j].y+2*liamRadius) {
-							killLiam(j,0,punches[i].grahamId);  // Pass Graham ID for tracking
-							killPunch(i);
+							// Check if it's corn - special effect!
+							if (punches[i].veggie === '🌽') {
+								// Corn makes Liam 1.5x faster
+								liams[j].speedMultiplier *= 1.5;
+								// Update velocity with new speed
+								var mag = dist(0,0,liams[j].dx,liams[j].dy);
+								if (mag > 0) {
+									liams[j].dx *= 1.5;
+									liams[j].dy *= 1.5;
+								}
+								killPunch(i);
+							} else {
+								// Normal veggies kill the Liam
+								killLiam(j,0,punches[i].grahamId);  // Pass Graham ID for tracking
+								killPunch(i);
+							}
 							break;
 						}
 					}
@@ -462,8 +488,8 @@
 						&& fridges[i].x < liams[j].x+2*liamRadius
 						&& fridges[i].y < liams[j].y+2*liamRadius) {
 							killLiam(j,2);  // No Graham ID - stopped by fridge
-							fridges[i].health--;
-							if(fridges[i].health == 0) {
+							fridges[i].milkOz -= 10;  // Each Liam drinks 10 oz of milk
+							if(fridges[i].milkOz <= 0) {
 								fridges[i].status =0;
 							}
 						}
@@ -496,6 +522,63 @@
 			}
 		}
 		return count;
+	}
+
+	function spawnPortal() {
+		if (portals.length >= maxPortals) return;
+
+		// Random position on canvas
+		var x = Math.random() * canvas.width;
+		var y = Math.random() * canvas.height;
+
+		portals.push({
+			x: x,
+			y: y,
+			r: portalRadius,
+			status: 1
+		});
+	}
+
+	function liamPortalCD() {
+		// Check if Liams enter portals
+		var i=0;
+		var l = portals.length;
+		for(i=0; i<l; i++) {
+			if (portals[i].status == 1) {
+				var j=0;
+				var liamL = liams.length;
+				for(j=0; j<liamL; j++) {
+					if (liams[j].status == 1) {
+						var d = dist(liams[j].x, liams[j].y, portals[i].x, portals[i].y);
+						if (d <= portals[i].r) {
+							// Liam entered portal! Clone it
+							var angle1 = Math.random() * Math.PI * 2;
+							var angle2 = Math.random() * Math.PI * 2;
+							var speed = liamSpeed * liams[j].speedMultiplier;
+
+							// Create two new Liams with random trajectories
+							makeLiam(liams[j].x, liams[j].y, liams[j].speedMultiplier);
+							liams[liams.length-1].dx = Math.cos(angle1) * speed;
+							liams[liams.length-1].dy = Math.sin(angle1) * speed;
+
+							makeLiam(liams[j].x, liams[j].y, liams[j].speedMultiplier);
+							liams[liams.length-1].dx = Math.cos(angle2) * speed;
+							liams[liams.length-1].dy = Math.sin(angle2) * speed;
+
+							// Kill the original Liam (it split into two)
+							killLiam(j, 0);
+
+							// Remove the portal after use
+							portals[i].status = 0;
+							break;
+						}
+					}
+				}
+			}
+		}
+
+		// Clean up dead portals
+		portals = portals.filter(function(p) { return p.status == 1; });
 	}
 	
     function posGrahams() {
@@ -768,8 +851,8 @@
 
 	function costEstimate() {
 		var buildingCost =0;
-		if (wPlace) {buildingCost = fridgeCost;}
 		if (gPlace) {buildingCost = grahamCost;}
+		// No fridge cost - fridge is auto-created in center
 		findNearBuilding();
 		return buildingCost;  // No pipe costs anymore
 	}
@@ -815,55 +898,70 @@
 		var l =fridges.length;
         for(i=0; i<l; i++) {
 			if (fridges[i].status ==1) {
+				// Draw fridge body
 				ctx.beginPath();
 				ctx.rect(fridges[i].x-fridgeWidth/2, fridges[i].y-fridgeWidth/2, fridgeWidth, fridgeWidth);
-				ctx.fillStyle = "#454545";
+				ctx.fillStyle = "#FFFFFF";
+				ctx.strokeStyle = "#666666";
+				ctx.lineWidth = 2;
 				ctx.fill();
+				ctx.stroke();
 				ctx.closePath();
-				ctx.font = "16px Arial";
-				ctx.fillStyle = "#0095DD";
-				ctx.fillText(fridges[i].health+","+fridges[i].output, fridges[i].x, fridges[i].y);
+
+				// Draw milk emojis based on milk oz
+				var milkCartons = Math.ceil(fridges[i].milkOz / milkPerEmoji);
+				ctx.font = "20px Arial";
+				var emojisPerRow = 5;
+				var emojiSpacing = 22;
+				for(var m=0; m<milkCartons; m++) {
+					var row = Math.floor(m / emojisPerRow);
+					var col = m % emojisPerRow;
+					var emojiX = fridges[i].x - 50 + col * emojiSpacing;
+					var emojiY = fridges[i].y + 40 + row * emojiSpacing;
+					ctx.fillText("🥛", emojiX, emojiY);
+				}
+
+				// Draw detection radius
 				ctx.beginPath();
 				ctx.arc(fridges[i].x, fridges[i].y, fridges[i].r, 0, Math.PI*2);
 				ctx.strokeStyle = "#DDDDDD";
+				ctx.lineWidth = 1;
 				ctx.stroke();
+
+				// Display milk oz
+				ctx.font = "14px Arial";
+				ctx.fillStyle = "#0000FF";
+				ctx.fillText(fridges[i].milkOz + " oz", fridges[i].x - 20, fridges[i].y - 30);
 			}
 		}
-		if (wPlace) {
-			drawFridgeProspect();
-			//ctx.beginPath();
-			//ctx.rect(currentPos[0],currentPos[1], wellWidth, wellWidth);
-			//ctx.fillStyle = "#999999";
-			//ctx.fill();
-			//ctx.closePath();
-			//ctx.beginPath();
-			//ctx.arc(currentPos[0],currentPos[1], wellRadius, 0, Math.PI*2);
-			//ctx.strokeStyle = "#999999";
-			//ctx.stroke();
-		}
+		// No fridge placement - only one fridge in center
     }
 	
     function drawScore() {
         ctx.font = "16px Arial";
         ctx.fillStyle = "#000000";
         ctx.fillText("Score: "+score, 8, 20);
-        ctx.fillText("Refrigerators: "+fridges.length, 8, 40);
+        if (fridges.length > 0 && fridges[0].status == 1) {
+			ctx.fillText("Milk: "+fridges[0].milkOz+" oz 🥛", 8, 40);
+		} else {
+			ctx.fillText("Milk: OUT!", 8, 40);
+		}
         ctx.fillText("Grahams: "+grahams.length, 8, 60);
         ctx.fillText("XP: "+Math.round(xp), 8, 80);
 		ctx.fillText(Math.round(10000/(timr[9]-timr[0])) +"fps", 8, 100);
 
-        ctx.fillText("Press SPACEBAR to pause", canvas.width-280, 20);
-        ctx.fillText("Press G to place a Graham", canvas.width-280, 40);
-        ctx.fillText("Press W for a refrigerator", canvas.width-280, 60);
-        ctx.fillText("Click Graham to select", canvas.width-280, 80);
-		ctx.fillText("Arrows to rotate Graham", canvas.width-280, 100);
-		ctx.fillText("C to upgrade caffeine (XP)", canvas.width-280, 120);
+        ctx.fillText("Press SPACEBAR to pause", canvas.width-300, 20);
+        ctx.fillText("Press G to place a Graham", canvas.width-300, 40);
+        ctx.fillText("Click Graham to select", canvas.width-300, 60);
+		ctx.fillText("Arrows to rotate Graham", canvas.width-300, 80);
+		ctx.fillText("C to upgrade caffeine (XP)", canvas.width-300, 100);
+		ctx.fillText("🌽 = Speed boost!", canvas.width-300, 120);
 
 		// Draw kill log
 		ctx.font = "14px Arial";
 		ctx.fillStyle = "#006600";
 		for(var i=0; i<killLog.length; i++) {
-			ctx.fillText(killLog[i], canvas.width-280, 160 + i*18);
+			ctx.fillText(killLog[i], canvas.width-300, 160 + i*18);
 		}
     }
 
@@ -886,6 +984,29 @@
 		}
 	}
 	
+    function drawPortals() {
+		var i=0;
+		var l = portals.length;
+		for(i=0; i<l; i++) {
+			if (portals[i].status == 1) {
+				// Draw portal as swirling purple circle
+				ctx.beginPath();
+				ctx.arc(portals[i].x, portals[i].y, portals[i].r, 0, Math.PI*2);
+				ctx.fillStyle = "rgba(138, 43, 226, 0.3)";  // Semi-transparent purple
+				ctx.fill();
+				ctx.strokeStyle = "#8B00FF";
+				ctx.lineWidth = 3;
+				ctx.stroke();
+				ctx.closePath();
+
+				// Add portal label
+				ctx.font = "14px Arial";
+				ctx.fillStyle = "#8B00FF";
+				ctx.fillText("CLONE", portals[i].x - 25, portals[i].y);
+			}
+		}
+	}
+
     function drawLiams() {
 		var i=0;
 		var l =liams.length;
@@ -893,7 +1014,12 @@
 			if (liams[i].status ==1) {
 				ctx.beginPath();
 				ctx.arc(liams[i].x, liams[i].y, liamRadius, 0, Math.PI*2);
-				ctx.fillStyle = "#0095DD";
+				// Color based on speed multiplier
+				if (liams[i].speedMultiplier > 1) {
+					ctx.fillStyle = "#FF0000";  // Red for fast Liams
+				} else {
+					ctx.fillStyle = "#0095DD";  // Blue for normal Liams
+				}
 				ctx.fill();
 				ctx.closePath();
 			}
@@ -945,8 +1071,10 @@
 					liams[i].dy = liams[i].dPushy + liams[i].wPully;
 					var mag = dist(0,0,liams[i].dx,liams[i].dy);
 					if (mag > 0){
-						liams[i].dx*=(liamSpeed/mag);
-						liams[i].dy*=(liamSpeed/mag);
+						// Use speed multiplier for the Liam's speed
+						var currentSpeed = liamSpeed * liams[i].speedMultiplier;
+						liams[i].dx*=(currentSpeed/mag);
+						liams[i].dy*=(currentSpeed/mag);
 					}
 				}
 
@@ -998,21 +1126,29 @@
 		timr.push(Date.now());
 		timr.shift();
 		frameCounter++;
+
+		// Portal spawning
+		portalSpawnCounter++;
+		if (portalSpawnCounter >= portalSpawnRate) {
+			spawnPortal();
+			portalSpawnCounter = 0;
+		}
+
 		var j=0;
 		var l = fridges.length;
 		if (l >= 1) {
 			liamsOn=true;
 		}
-		var totalHealth = 0;
+		var totalMilk = 0;
 		for(j=0; j<l; j++) {
 			var f = fridges[j];
 			if (f.status==1) {
 				xp+=f.output*0.01;  // Fixed XP generation rate
-				totalHealth+=Math.max(0,f.health)
+				totalMilk+=Math.max(0,f.milkOz)
 			}
 		}
-		if (l>0 && totalHealth == 0) {
-			alert("YOU LOSE. YOU WERE DEFEATED BY "+ liams.length +" LIAMS!");
+		if (l>0 && totalMilk == 0) {
+			alert("YOU LOSE. THE FRIDGE IS OUT OF MILK! "+ liams.length +" LIAMS DRANK IT ALL!");
 			initialize();
 		}
 	}
@@ -1039,7 +1175,7 @@
 		minLivePunch = 0;
 		kShift = false;
 		gPlace = false;
-		wPlace = true;
+		wPlace = false;  // Don't start in well placement mode
 		isDragging = false;
 		dragDist = 0;
 		startingPos = [];
@@ -1049,6 +1185,11 @@
 		selectedGraham = -1;
 		floatingTexts = [];
 		killLog = [];
+		portals = [];
+		portalSpawnCounter = 0;
+
+		// Create the one and only fridge in the center
+		makeFridge(0, 0);  // Position doesn't matter, it will be centered
 	}
 	//function roundRect(x, y, width, height, radius, fill, stroke) {
 	//	if (typeof stroke == "undefined" ) {
@@ -1079,6 +1220,7 @@
     function draw() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 		//drawTerrain();
+		drawPortals();
 		drawGrahams();
 		drawFridges();
 		drawLiams();
@@ -1096,6 +1238,7 @@
 
 			liamPunchCD();
 			liamFridgeCD();
+			liamPortalCD();  // Check portal collisions
 
 			liamPunchCleanup();
 			counters();
