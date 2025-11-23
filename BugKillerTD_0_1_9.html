@@ -21,7 +21,7 @@
 	var liamRadius = 7;
 	var punchRadius = 10;  // Collision radius for veggies
 	var fridgeWidth = 20;  // Renamed from wellWidth
-    var liamSpeed = 4;
+    var liamSpeed = 3;
     var punchSpeed = 12;
 	var veggieSize = 20;  // Size of veggie sprites
 	var veggieSprites = ['🥕', '🥦', '🌽', '🍅', '🥒', '🧄', '🧅', '🥬', '🫑', '🍆'];  // Veggie emojis
@@ -35,7 +35,7 @@
     var grahamWidth = 15;  // Renamed from turretWidth
     var railWidth = 5;
 	var fireLoops = 2;
-	var minLiamGen = 1;				// Liams will never come more than every __ frames
+	var minLiamGen = .1;				// Liams will never come more than every __ frames
 	var initLiamGen = 10;			// At game start, Liams come every __ frames
 	var stepLiamGen = 1100;			// Liam frequency increases every __ frames
 	
@@ -44,9 +44,9 @@
 	var nearDist =0;
 
 	var deadLiamBuffer = 500;
-	var grahamCost = 300;  // Cost in XP
+	var grahamCost = 10000; // Cost in XP
 	var fridgeHealth = 100;  // Renamed from wellHealth
-	var grahamRange = 160;
+	var grahamRange = 100;
 	var grahamFiringArc = 90;  // Wedge angle in degrees
 	var grahamReloadTime = 5;  // Base reload time
 	var deathPushParam = 3;
@@ -72,7 +72,7 @@
 	var maxPortals = 3;  // Maximum number of portals on map
 
 	var elbowRoom = 0;
-	var minDistance = 50;
+	var minDistance = 60;
 	var selectedGraham = -1; // Currently selected Graham for rotation
 	var grahamNextId = 1; // Auto-incrementing ID for Grahams
 	
@@ -477,11 +477,11 @@
 									liams[j].dx *= 1.5;
 									liams[j].dy *= 1.5;
 								}
-								killPunch(i);
+								//killPunch(i);
 							} else {
 								// Normal veggies kill the Liam
 								killLiam(j,0,punches[i].grahamId);  // Pass Graham ID for tracking
-								killPunch(i);
+								//killPunch(i);
 							}
 							break;
 						}
@@ -504,7 +504,7 @@
 						&& fridges[i].x < liams[j].x+2*liamRadius
 						&& fridges[i].y < liams[j].y+2*liamRadius) {
 							killLiam(j,2);  // No Graham ID - stopped by fridge
-							fridges[i].milkOz -= 10;  // Each Liam drinks 10 oz of milk
+							fridges[i].milkOz -= 1;  // Each Liam drinks 1 oz of milk
 							if(fridges[i].milkOz <= 0) {
 								fridges[i].status =0;
 							}
@@ -1216,7 +1216,7 @@
 		grahamNextId = 1;
 		frameCounter = 0;
 		timr = [0,0,0,0,0,0,0,0,0,0];
-		xp = 900;  // Start with enough for 3 Grahams
+		xp = 50000;  // Start with enough for 3 Grahams
 		proposedCost = 0;
 		currentPos = [];
 		minLivePunch = 0;
