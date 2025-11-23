@@ -757,8 +757,9 @@
     function drawGrahams() {
 		var i=0;
 		var l =grahams.length;
-        if (gPlace||kShift) {
-			for(i=0; i<l; i++) {
+		// Always show the firing cone for the selected Graham
+		for(i=0; i<l; i++) {
+			if ((gPlace || kShift) || selectedGraham === i) {
 				// Draw wedge-shaped range
 				ctx.beginPath();
 				ctx.moveTo(grahams[i].x, grahams[i].y);
