@@ -18,7 +18,7 @@
     var ctx = canvas.getContext("2d");
 	canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
-    var liamRadius = 7;
+	var liamRadius = 7;
 	var punchRadius = 10;  // Collision radius for veggies
 	var fridgeWidth = 20;  // Renamed from wellWidth
     var liamSpeed = 4;
@@ -102,6 +102,22 @@
 	var portalSpawnCounter = 0;  // Counter for portal spawning
 
 	var frameCounter = 0;
+
+	// Preload Graham asset from assets folder
+	var grahamImg = new Image();
+	grahamImg.src = 'assets/graham_assets/sprite_idle_0.png';
+	var grahamImgWidth = 40; // display size for the Graham asset
+	var grahamImgHeight = 40;
+
+	// Preload Liam asset from assets folder
+	var liamImg = new Image();
+	liamImg.src = 'assets/liam_assets/sprite_liam_idle_0.png';
+	var liamImgWidth = 28; // display size for the Liam head
+	var liamImgHeight = 28;
+	// When the image loads, update collision radius to match sprite size
+	liamImg.onload = function() {
+		liamRadius = Math.max(liamImgWidth, liamImgHeight)/2;
+	};
 	var timr = [0,0,0,0,0,0,0,0,0,0];
 	var xp = 0;  // Renamed from money - earned by stopping Liams
 	var proposedCost = 0;
@@ -757,12 +773,27 @@
 			}
 		}
         for(i=0; i<l; i++) {
-			// Draw Graham body
-			ctx.beginPath();
-			ctx.rect(grahams[i].x-0.5*grahamWidth, grahams[i].y-0.5*grahamWidth, grahamWidth, grahamWidth);
-			ctx.fillStyle = selectedGraham === i ? "#FF0000" : "#454545";
-			ctx.fill();
-			ctx.closePath();
+			// Draw Graham body using the preloaded asset (fallback to rectangle)
+			if (grahamImg && grahamImg.complete && grahamImg.naturalWidth) {
+				ctx.drawImage(grahamImg, grahams[i].x - grahamImgWidth/2, grahams[i].y - grahamImgHeight/2, grahamImgWidth, grahamImgHeight);
+			} else {
+				ctx.beginPath();
+				ctx.rect(grahams[i].x-0.5*grahamWidth, grahams[i].y-0.5*grahamWidth, grahamWidth, grahamWidth);
+				ctx.fillStyle = "#454545";
+				ctx.fill();
+				ctx.closePath();
+			}
+
+			// Draw selection highlight (ring) when selected
+			if (selectedGraham === i) {
+				ctx.beginPath();
+				var ringRadius = Math.max(grahamImgWidth, grahamImgHeight)/2 + 6;
+				ctx.arc(grahams[i].x, grahams[i].y, ringRadius, 0, Math.PI*2);
+				ctx.strokeStyle = "#FF0000";
+				ctx.lineWidth = 2;
+				ctx.stroke();
+				ctx.closePath();
+			}
 
 			// Draw facing direction indicator
 			var indicatorLen = 20;
@@ -816,10 +847,16 @@
 		ctx.stroke();
 
 		ctx.beginPath();
-		ctx.rect(currentPos[0]-0.5*grahamWidth, currentPos[1]-0.5*grahamWidth, grahamWidth, grahamWidth);
-		ctx.fillStyle = color;
-		ctx.fill();
-		ctx.closePath();
+		// Draw Graham preview using asset if available
+		if (grahamImg && grahamImg.complete && grahamImg.naturalWidth) {
+			ctx.drawImage(grahamImg, currentPos[0] - grahamImgWidth/2, currentPos[1] - grahamImgHeight/2, grahamImgWidth, grahamImgHeight);
+		} else {
+			ctx.beginPath();
+			ctx.rect(currentPos[0]-0.5*grahamWidth, currentPos[1]-0.5*grahamWidth, grahamWidth, grahamWidth);
+			ctx.fillStyle = color;
+			ctx.fill();
+			ctx.closePath();
+		}
 
 		ctx.font = "16px Arial";
 		ctx.fillStyle = color;
@@ -1012,16 +1049,25 @@
 		var l =liams.length;
         for(i=0; i<l; i++) {
 			if (liams[i].status ==1) {
-				ctx.beginPath();
-				ctx.arc(liams[i].x, liams[i].y, liamRadius, 0, Math.PI*2);
-				// Color based on speed multiplier
+				// If Liam is fast, draw a subtle red glow behind the sprite
 				if (liams[i].speedMultiplier > 1) {
-					ctx.fillStyle = "#FF0000";  // Red for fast Liams
-				} else {
-					ctx.fillStyle = "#0095DD";  // Blue for normal Liams
+					ctx.beginPath();
+					ctx.arc(liams[i].x, liams[i].y, liamRadius + 6, 0, Math.PI*2);
+					ctx.fillStyle = "rgba(255,0,0,0.18)";
+					ctx.fill();
+					ctx.closePath();
 				}
-				ctx.fill();
-				ctx.closePath();
+
+				// Draw Liam head sprite if available, otherwise fallback to circle
+				if (liamImg && liamImg.complete && liamImg.naturalWidth) {
+					ctx.drawImage(liamImg, liams[i].x - liamImgWidth/2, liams[i].y - liamImgHeight/2, liamImgWidth, liamImgHeight);
+				} else {
+					ctx.beginPath();
+					ctx.arc(liams[i].x, liams[i].y, liamRadius, 0, Math.PI*2);
+					ctx.fillStyle = liams[i].speedMultiplier > 1 ? "#FF0000" : "#0095DD";
+					ctx.fill();
+					ctx.closePath();
+				}
 			}
         }
     }
