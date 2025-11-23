@@ -70,6 +70,7 @@
 	var portalRadius = 50;  // Radius of cloning portals
 	var portalSpawnRate = 600;  // Frames between portal spawns
 	var maxPortals = 3;  // Maximum number of portals on map
+	var portalSpeed = 1.4; // Base speed (pixels/frame) for moving portals
 
 	var elbowRoom = 0;
 	var minDistance = 60;
@@ -557,11 +558,22 @@
 		var x = Math.random() * canvas.width;
 		var y = Math.random() * canvas.height;
 
+		// Portals now have a lifetime (expireAt in ms). They remain usable until expiry.
+		var now = Date.now();
+		// Give portals a small initial velocity so they drift around and bounce
+		var ang = Math.random() * Math.PI * 2;
+		var sp = portalSpeed * (0.6 + Math.random() * 0.9); // vary speed a bit
+		var vx = Math.cos(ang) * sp;
+		var vy = Math.sin(ang) * sp;
 		portals.push({
 			x: x,
 			y: y,
 			r: portalRadius,
-			status: 1
+			status: 1,
+			createdAt: now,
+			expireAt: now + 30000, // 30 seconds lifetime
+			vx: vx,
+			vy: vy
 		});
 	}
 
@@ -594,8 +606,7 @@
 							// Kill the original Liam (it split into two)
 							killLiam(j, 0);
 
-							// Remove the portal after use
-							portals[i].status = 0;
+							// Do NOT remove the portal immediately. It remains active until its expireAt.
 							break;
 						}
 					}
@@ -603,8 +614,40 @@
 			}
 		}
 
-		// Clean up dead portals
-		portals = portals.filter(function(p) { return p.status == 1; });
+		// Clean up expired portals (keep ones still active and not past expireAt)
+		var now = Date.now();
+		portals = portals.filter(function(p) { return p.status == 1 && (typeof p.expireAt === 'undefined' || now <= p.expireAt); });
+	}
+
+	// Move active portals each frame (called from counters())
+	function movePortals() {
+		var i=0;
+		var l = portals.length;
+		var now = Date.now();
+		for(i=0;i<l;i++) {
+			var p = portals[i];
+			if (p.status == 1 && (typeof p.expireAt === 'undefined' || now <= p.expireAt)) {
+				// Update position
+				p.x += p.vx || 0;
+				p.y += p.vy || 0;
+
+				// Bounce off canvas edges
+				if (p.x - p.r < 0) { p.x = p.r; p.vx = -(p.vx || 0); }
+				if (p.x + p.r > canvas.width) { p.x = canvas.width - p.r; p.vx = -(p.vx || 0); }
+				if (p.y - p.r < 0) { p.y = p.r; p.vy = -(p.vy || 0); }
+				if (p.y + p.r > canvas.height) { p.y = canvas.height - p.r; p.vy = -(p.vy || 0); }
+
+				// Small occasional jitter to keep motion interesting
+				if (Math.random() < 0.02) {
+					p.vx += (Math.random()-0.5) * 0.6;
+					p.vy += (Math.random()-0.5) * 0.6;
+					// Limit portal speed
+					var s = Math.sqrt(p.vx*p.vx + p.vy*p.vy) || 0.0001;
+					var max = portalSpeed * 1.8;
+					if (s > max) { p.vx = (p.vx/s) * max; p.vy = (p.vy/s) * max; }
+				}
+			}
+		}
 	}
 	
     function posGrahams() {
@@ -1036,7 +1079,8 @@
 		var i=0;
 		var l = portals.length;
 		for(i=0; i<l; i++) {
-			if (portals[i].status == 1) {
+			var now = Date.now();
+			if (portals[i].status == 1 && (typeof portals[i].expireAt === 'undefined' || now <= portals[i].expireAt)) {
 				// Draw portal as swirling purple circle
 				ctx.beginPath();
 				ctx.arc(portals[i].x, portals[i].y, portals[i].r, 0, Math.PI*2);
@@ -1050,7 +1094,13 @@
 				// Add portal label
 				ctx.font = "14px Arial";
 				ctx.fillStyle = "#8B00FF";
-				ctx.fillText("CLONE", portals[i].x - 25, portals[i].y);
+				// Show remaining seconds until expiry
+				var secondsLeft = portals[i].expireAt ? Math.ceil((portals[i].expireAt - now)/1000) : null;
+				if (secondsLeft !== null) {
+					ctx.fillText("CLONE (" + secondsLeft + "s)", portals[i].x - 35, portals[i].y);
+				} else {
+					ctx.fillText("CLONE", portals[i].x - 25, portals[i].y);
+				}
 			}
 		}
 	}
@@ -1202,6 +1252,9 @@
 			spawnPortal();
 			portalSpawnCounter = 0;
 		}
+
+		// Move portals each frame so they drift around
+		movePortals();
 
 		var j=0;
 		var l = fridges.length;
